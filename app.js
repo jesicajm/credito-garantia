@@ -21,11 +21,12 @@
         appId: '1:13266000813:web:f4e878c57d4e571fad1f24',
         measurementId: 'G-56F8P4D7QM',
       },
-      collection: 'registros_libre_inversion',
+      collection: 'registros',
+      tipoCredito: 'libre_inversion',
       // ⚠️ Reemplaza wa.link/hxop5c por tu link real, o cambia a wa.me/57XXXXXXXXXX si tienes número directo
       whatsappUrl: 'https://wa.link/hxop5c?text=' + encodeURIComponent('Hola, quiero información del crédito con garantía vehicular'),
-      googleAdsId: 'AW-XXXXXXXXX',                  // ⚠️ Reemplaza con tu Google Ads ID
-      googleAdsConversionLabel: 'XXXXXXXXXX',       // ⚠️ Reemplaza con el label de tu conversión "Lead"
+      googleAdsId: 'AW-18090223812',
+      googleAdsConversionLabel: '39BICKSmlaMcEMTRi7JD',
       metaPixelId: 'YOUR_PIXEL_ID',                 // ⚠️ Ya está cargado en index.html
       productName: 'libre_inversion_garantia_vehicular',
     };
@@ -41,9 +42,14 @@
       },
       qualifiedFired: false,
       enviando: false,
-      coleccionRegistros: null,
-      addDocFn: null,
+      firestoreDb: null,
+      setDocFn: null,
+      docFn: null,
       rechazoReason: '',
+      // ━━━ Sub-flujo de ingresos (igual que cartera) ━━━
+      mostrarInputIngresos: false,
+      ingresosRaw: '',          // string solo dígitos
+      skipMetaEvent: false,     // true cuando ingresos $4M-$8M (no enviar Lead a Meta)
     };
   
     // ─── HELPERS ─────────────────────────────────────────────────
@@ -83,10 +89,11 @@
       firebaseLoaded = true;
       try {
         const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const { getFirestore, collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { getFirestore, doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const app = initializeApp(CONFIG.firebase);
-        state.coleccionRegistros = collection(getFirestore(app), CONFIG.collection);
-        state.addDocFn = addDoc;
+        state.firestoreDb = getFirestore(app);
+        state.setDocFn = setDoc;
+        state.docFn = doc;
       } catch (e) {
         console.warn('[ABBA] Firebase load failed:', e);
       }
@@ -157,11 +164,12 @@
       sin_vehiculo_libre: 'Este crédito requiere un vehículo a tu nombre completamente libre de deuda. Si aún estás pagando tu carro, podemos avisarte cuando tengamos opciones de compra de cartera.',
       vehiculo_antiguo:   'Las entidades financieras aceptan vehículos modelo 2016 o superior como garantía. Si tu vehículo es más antiguo, déjanos tus datos y te avisamos si abrimos opciones para modelos anteriores.',
       reportes_negativos: 'Los reportes negativos en centrales de riesgo dificultan la aprobación. Te sugerimos resolver tu situación crediticia primero. Déjanos tus datos y te contactamos cuando tengamos opciones.',
-      ingresos_bajos:     'Para este tipo de crédito se requieren ingresos mínimos de $6.000.000 mensuales. Si tu situación cambia, estaremos aquí para ayudarte.',
+      ingresos_bajos:     'Para este tipo de crédito se requieren ingresos mínimos de $4.000.000 mensuales. Si tu situación cambia, estaremos aquí para ayudarte.',
     };
   
     function esPositiva(campo, val) {
       if (campo === 'sinReportes') return val === false;
+      if (campo === 'ingresos') return val === true || val === 'medio';
       return val === true;
     }
   
@@ -212,11 +220,13 @@
       $('#progress-fill').style.width = (respondidas / 4 * 100) + '%';
       $('#progress-num').textContent = respondidas;
   
+      // ingresos puede ser: true (>$8M) o "medio" ($4M-$8M) — ambos califican
+      const ingresosOk = state.filtro.ingresos === true || state.filtro.ingresos === 'medio';
       const todasOk =
         state.filtro.vehiculoLibre === true &&
         state.filtro.modeloReciente === true &&
         state.filtro.sinReportes === false &&
-        state.filtro.ingresos === true;
+        ingresosOk;
   
       $('#btn-continuar').style.display = todasOk ? 'inline-flex' : 'none';
     }
@@ -238,8 +248,27 @@
     function dispararQualified() {
       if (state.qualifiedFired) return;
       state.qualifiedFired = true;
+
+      // Meta Pixel — evento custom Qualified
       fbq('trackCustom', 'Qualified', { product: CONFIG.productName });
-      gtagFn('event', 'qualified', { product: CONFIG.productName });
+
+      // GA4 — evento qualified_lead (puedes usarlo en GA4 como conversión)
+      gtagFn('event', 'qualified_lead', {
+        product: CONFIG.productName,
+        currency: 'COP',
+        value: 1.0,
+      });
+
+      // Google Ads — evento personalizado para conversión secundaria.
+      // Si más adelante creas una conversión de tipo "Qualified Lead" en
+      // Google Ads, te van a dar otro Conversion Label. Reemplázalo aquí
+      // y descomenta el bloque para activarlo.
+      //
+      // gtagFn('event', 'conversion', {
+      //   send_to: CONFIG.googleAdsId + '/OTRO_LABEL_AQUI',
+      //   value: 1.0,
+      //   currency: 'COP',
+      // });
     }
   
     function responder(campo, valor) {
@@ -259,22 +288,123 @@
         setTimeout(() => { state.paso = 3; actualizarTodasLasCards(); }, 300);
       }
       else if (campo === 'ingresos') {
-        if (valor === false) { actualizarTodasLasCards(); actualizarProgreso(); rechazar('ingresos_bajos'); return; }
-        dispararQualified();
-        setTimeout(() => cambiarVista('formulario'), 500);
+        // Caso 1: Sí (>$8M) → skipMetaEvent=false, avanzar
+        if (valor === true) {
+          state.skipMetaEvent = false;
+          dispararQualified();
+          setTimeout(() => cambiarVista('formulario'), 500);
+        }
+        // Caso 2: "medio" ($4M-$8M) — viene de confirmarIngresoMedio()
+        else if (valor === 'medio') {
+          state.skipMetaEvent = true;  // NO disparar Lead a Meta
+          dispararQualified();
+          setTimeout(() => cambiarVista('formulario'), 500);
+        }
+        // Caso 3: false (<$4M) — viene de rechazarPorIngresos()
+        else if (valor === false) {
+          actualizarTodasLasCards(); actualizarProgreso(); rechazar('ingresos_bajos');
+          return;
+        }
       }
   
       actualizarTodasLasCards();
       actualizarProgreso();
     }
   
-    // Bind a todos los qbtn
-    $$('.qbtn').forEach((btn) => {
+    // Bind a todos los qbtn que tengan data-q
+    // (el botón "No" de ingresos no tiene data-q porque abre el sub-input)
+    $$('.qbtn[data-q]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const campo = btn.getAttribute('data-q');
         const valor = btn.getAttribute('data-v') === 'true';
         responder(campo, valor);
       });
+    });
+
+    // ━━━ SUB-FLUJO INGRESOS ($4M-$8M = "medio", <$4M = rechazo) ━━━
+
+    function formatearCOP(numStr) {
+      if (!numStr) return '';
+      return Number(numStr).toLocaleString('es-CO');
+    }
+
+    function actualizarUIIngresos() {
+      const monto = parseInt(state.ingresosRaw, 10) || 0;
+      const wrap = $('#income-wrap');
+      const warn = $('#income-warn');
+      const btnCont = $('#btn-ingresos-continuar');
+
+      wrap.style.display = state.mostrarInputIngresos ? 'block' : 'none';
+
+      if (!state.mostrarInputIngresos) {
+        warn.style.display = 'none';
+        btnCont.style.display = 'none';
+        return;
+      }
+
+      // Lógica de los 3 caminos según el monto
+      if (monto === 0) {
+        warn.style.display = 'none';
+        btnCont.style.display = 'none';
+      } else if (monto < 4000000) {
+        // <$4M → mostrar warning + botón rojo "Continuar" que rechaza
+        warn.style.display = 'flex';
+        btnCont.style.display = 'inline-flex';
+        btnCont.classList.add('qbtn-reject');
+        btnCont.dataset.action = 'rechazar';
+      } else {
+        // $4M-$8M → ingreso "medio" — botón normal
+        warn.style.display = 'none';
+        btnCont.style.display = 'inline-flex';
+        btnCont.classList.remove('qbtn-reject');
+        btnCont.dataset.action = 'medio';
+      }
+    }
+
+    // Click en "No" → abrir sub-input
+    $('#btn-ingresos-no').addEventListener('click', () => {
+      state.mostrarInputIngresos = true;
+      actualizarUIIngresos();
+      // Marca botón "No" como seleccionado visualmente
+      const btnNo = $('#btn-ingresos-no');
+      const btnSi = document.querySelector('[data-q="ingresos"][data-v="true"]');
+      btnNo.classList.add('qbtn-sel');
+      if (btnSi) btnSi.classList.add('qbtn-dim');
+      setTimeout(() => {
+        const input = $('#input-ingresos');
+        if (input) input.focus();
+      }, 100);
+    });
+
+    // Input de ingresos: solo dígitos + formato COP
+    $('#input-ingresos').addEventListener('input', (e) => {
+      const soloDigitos = e.target.value.replace(/[^\d]/g, '');
+      state.ingresosRaw = soloDigitos;
+      e.target.value = formatearCOP(soloDigitos);
+      actualizarUIIngresos();
+    });
+
+    // Botón "Continuar" del sub-flujo: decide entre medio y rechazo
+    $('#btn-ingresos-continuar').addEventListener('click', () => {
+      const action = $('#btn-ingresos-continuar').dataset.action;
+      const monto = parseInt(state.ingresosRaw, 10) || 0;
+      if (action === 'medio') {
+        // $4M-$8M → "medio" → skipMetaEvent
+        state.filtro.ingresos = 'medio';
+        state.mostrarInputIngresos = false;
+        actualizarUIIngresos();
+        actualizarTodasLasCards();
+        actualizarProgreso();
+        responder('ingresos', 'medio');
+      } else if (action === 'rechazar') {
+        // <$4M → rechazo
+        state.filtro.ingresos = false;
+        state.mostrarInputIngresos = false;
+        actualizarUIIngresos();
+        actualizarTodasLasCards();
+        actualizarProgreso();
+        responder('ingresos', false);
+      }
     });
   
     // Init
@@ -309,6 +439,17 @@
       state.filtro = { vehiculoLibre: null, modeloReciente: null, sinReportes: null, ingresos: null };
       state.qualifiedFired = false;
       state.rechazoReason = '';
+      state.mostrarInputIngresos = false;
+      state.ingresosRaw = '';
+      state.skipMetaEvent = false;
+      // Reset visual del input
+      const input = $('#input-ingresos');
+      if (input) input.value = '';
+      actualizarUIIngresos();
+      // Reset clase de botones de ingresos
+      $('#btn-ingresos-no').classList.remove('qbtn-sel');
+      const btnSi = document.querySelector('[data-q="ingresos"][data-v="true"]');
+      if (btnSi) btnSi.classList.remove('qbtn-dim');
       actualizarTodasLasCards();
       actualizarProgreso();
       cambiarVista('filtro');
@@ -326,21 +467,51 @@
         return;
       }
   
+      const eventId = safeUUID();
+
       await loadFirebase();
-      if (state.coleccionRegistros && state.addDocFn) {
+      if (state.firestoreDb && state.setDocFn && state.docFn) {
         try {
-          await state.addDocFn(state.coleccionRegistros, {
-            nombre,
-            celular,
+          // Usamos setDoc con UUID custom como docId
+          // → Cloud Function tendrá event.params.docId === eventId
+          // → CAPI y Pixel deduplican por mismo event_id
+          const ref = state.docFn(state.firestoreDb, CONFIG.collection, eventId);
+          await state.setDocFn(ref, {
+            // ━━━ Campos comunes (compatibles con Cloud Function existente) ━━━
+            name: nombre,
+            lastName: '',
             email: email || null,
-            fechaRenovacionPoliza: fechaPoliza,
+            phone: email ? ('57' + celular.replace(/^0+/, '')) : ('57' + celular.replace(/^0+/, '')),
+
+            // ━━━ Diferenciador ━━━
+            tipoCredito: CONFIG.tipoCredito,
+
+            // ━━━ Estado ━━━
             status: 'no_califica',
-            rechazoReason: state.rechazoReason,
-            filtro: { ...state.filtro },
-            producto: 'libre_inversion',
+            califica: false,
+            solicitudEnviada: false,
+            // ⚠️ Para "no califica" NO disparamos CAPI Lead (no es un lead real)
+            skipMetaEvent: true,
+
+            // ━━━ Fechas ━━━
+            fechaRenovacionPoliza: fechaPoliza,
             timestamp: new Date(),
+
+            // ━━━ Específico libre inversión ━━━
+            libreInversionInfo: {
+              vehiculoLibreDeuda: state.filtro.vehiculoLibre,
+              vehiculoModelo2016Plus: state.filtro.modeloReciente,
+              sinReportesNegativos: state.filtro.sinReportes === false,
+              ingresosSuperiores8M: state.filtro.ingresos,
+              ingresosMensuales: parseInt(state.ingresosRaw, 10) || null,
+              proposito: null,
+              rechazoReason: state.rechazoReason,
+            },
+
+            // ━━━ Event tracking ━━━
+            event_id: eventId,
           });
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error('[ABBA] Firebase no-califica error:', e); }
       }
   
       fbq('trackCustom', 'WaitlistSignup', { reason: state.rechazoReason });
@@ -402,6 +573,9 @@
         fechaRenovacionPoliza: $('#f-fecha').value || null,
       };
   
+      // ⭐ UUID custom — se usa como docId en Firestore Y como event_id en Pixel/CAPI
+      // → Cloud Function recibe event.params.docId === eventId
+      // → Meta deduplica entre Pixel (browser) y CAPI (server) por mismo ID
       const eventId = safeUUID();
   
       // Guardar en Firebase
@@ -412,55 +586,107 @@
         ip = r.ip;
       } catch (e) { /* silent */ }
   
-      if (state.coleccionRegistros && state.addDocFn) {
+      if (state.firestoreDb && state.setDocFn && state.docFn) {
         try {
-          await state.addDocFn(state.coleccionRegistros, {
-            nombre:        formData.nombre,
-            apellido:      formData.primerApellido,
+          const ref = state.docFn(state.firestoreDb, CONFIG.collection, eventId);
+          await state.setDocFn(ref, {
+            // ━━━ Campos comunes (compatibles con Cloud Function existente) ━━━
+            name:          formData.nombre,
+            lastName:      formData.primerApellido,
             email:         formData.correo,
             phone:         '57' + formData.celular.replace(/^0+/, ''),
-            proposito:     formData.proposito,
+
+            // ━━━ Diferenciador ━━━
+            tipoCredito:   CONFIG.tipoCredito,
+
+            // ━━━ Estado ━━━
+            status:        'pendiente',
+            califica:      true,
+            solicitudEnviada: false,
+            // ⭐ skipMetaEvent refleja si los ingresos están en rango medio ($4M-$8M)
+            // → Cloud Function NO disparará CAPI Lead (consistente con Pixel client-side)
+            skipMetaEvent: state.skipMetaEvent,
+            montoCredito:  null,
+
+            // ━━━ Fechas ━━━
             fechaRenovacionPoliza: formData.fechaRenovacionPoliza,
-            filtro:        { ...state.filtro },
+            timestamp:     new Date(),
+
+            // ━━━ Específico libre inversión ━━━
+            libreInversionInfo: {
+              vehiculoLibreDeuda:      state.filtro.vehiculoLibre,
+              vehiculoModelo2016Plus:  state.filtro.modeloReciente,
+              sinReportesNegativos:    state.filtro.sinReportes === false,
+              // ingresosSuperiores8M: true ($>8M) | "medio" ($4M-$8M)
+              ingresosSuperiores8M:    state.filtro.ingresos,
+              // Monto exacto si lo ingresó (rango medio)
+              ingresosMensuales:       parseInt(state.ingresosRaw, 10) || null,
+              proposito:               formData.proposito,
+              rechazoReason:           null,
+            },
+
+            // ━━━ User data para CAPI / matching ━━━
             ip,
             user_agent:    navigator.userAgent,
             fbp:           getCookie('_fbp'),
             fbc:           new URLSearchParams(window.location.search).get('fbclid') || getCookie('_fbc'),
+
+            // ━━━ Event tracking (event_id == docId) ━━━
             event_id:      eventId,
-            producto:      'libre_inversion',
-            status:        'pendiente',
-            timestamp:     new Date(),
           });
         } catch (e) { console.error('[ABBA] Firebase save error:', e); }
       }
   
-      // Meta Pixel — Lead
-      fbq('track', 'Lead', {
-        event_id: eventId,
-        currency: 'COP',
-        content_name: CONFIG.productName,
-        content_category: 'libre_inversion',
-      });
+      // ━━━ Meta Pixel — Lead (browser side) ━━━
+      // ⚠️ Solo disparamos Lead si los ingresos NO están en rango medio.
+      // skipMetaEvent === true cuando ingresos $4M-$8M (lead se guarda pero no cuenta como conversión).
+      // El Cloud Function tiene la misma lógica (lee skipMetaEvent del doc) → consistencia perfecta.
+      if (!state.skipMetaEvent) {
+        fbq('track', 'Lead', {
+          currency: 'COP',
+          content_name: CONFIG.productName,
+          content_category: CONFIG.tipoCredito,
+          value: 1.0,
+        }, {
+          eventID: eventId,
+        });
+      }
   
-      // Google Ads — Conversion
-      gtagFn('event', 'conversion', {
-        send_to: CONFIG.googleAdsId + '/' + CONFIG.googleAdsConversionLabel,
-        transaction_id: eventId,
-      });
       // GA4 — generate_lead (estándar)
       gtagFn('event', 'generate_lead', {
         currency: 'COP',
-        value: 0,
+        value: 1.0,
         product: CONFIG.productName,
       });
-  
-      // Redirige a WhatsApp
-      setTimeout(() => {
+
+      // ─── Google Ads Conversion ─────────────────────────────────
+      // Disparamos la conversión con event_callback para garantizar
+      // que se registra ANTES de redirigir a WhatsApp.
+      // Si gtag tarda más de 1.5s o no carga, abrimos WhatsApp igual.
+      let redirected = false;
+      const goToWhatsApp = () => {
+        if (redirected) return;
+        redirected = true;
         window.open(CONFIG.whatsappUrl, '_blank');
         btnLabel.textContent = '✓ Enviado — abriendo WhatsApp';
         state.enviando = false;
         btnEnviar.disabled = false;
-      }, 600);
+      };
+
+      if (typeof window.gtag !== 'undefined') {
+        gtag('event', 'conversion', {
+          send_to: CONFIG.googleAdsId + '/' + CONFIG.googleAdsConversionLabel,
+          value: 1.0,
+          currency: 'COP',
+          transaction_id: eventId,
+          event_callback: goToWhatsApp,
+        });
+        // Failsafe: si callback no responde en 1.5s, redirigir igual
+        setTimeout(goToWhatsApp, 1500);
+      } else {
+        // gtag no cargó (adblocker, error de red) — redirigir directo
+        setTimeout(goToWhatsApp, 600);
+      }
     });
   
     // ─── FOOTER YEAR ─────────────────────────────────────────────

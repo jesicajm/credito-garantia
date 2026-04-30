@@ -763,6 +763,100 @@ ul, ol { list-style: none; }
   border: 1px solid var(--line-dark-strong);
 }
 
+/* ━━━ Sub-input de ingresos ━━━ */
+.income-input-wrap {
+  width: 100%;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line-dark);
+  animation: fadeUp .3s ease;
+}
+.income-label {
+  display: block;
+  font-size: .72rem;
+  font-weight: 400;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.5);
+  margin-bottom: .65rem;
+}
+.income-field {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .65rem 0;
+  border-bottom: 1px solid var(--line-dark-strong);
+  margin-bottom: .85rem;
+}
+.income-field:focus-within { border-bottom-color: var(--accent-soft); }
+.income-prefix {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 1.4rem;
+  color: rgba(255,255,255,.6);
+  line-height: 1;
+}
+.income-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 1.4rem;
+  color: #fff;
+  padding: 0;
+  letter-spacing: .01em;
+}
+.income-input::placeholder { color: rgba(255,255,255,.2); }
+
+.income-warn {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .7rem .85rem;
+  margin-bottom: .85rem;
+  background-color: rgba(248, 113, 113, 0.08);
+  border-left: 2px solid var(--bad);
+  border-radius: 2px;
+  font-size: .82rem;
+  font-weight: 300;
+  color: rgba(248, 113, 113, .9);
+}
+
+.qbtn-continue {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .7rem 1.5rem;
+  background-color: #fff;
+  color: var(--bg-dark);
+  border-color: #fff;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  font-size: .72rem;
+  transition: background-color .15s, color .15s;
+}
+.qbtn-continue:hover {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+.qbtn-continue.qbtn-reject {
+  background-color: transparent;
+  color: var(--bad);
+  border: 1px solid rgba(248, 113, 113, .35);
+}
+.qbtn-continue.qbtn-reject:hover {
+  background-color: rgba(248, 113, 113, .08);
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+/* Card 4 cuando tiene el input abierto: visualmente destacada */
+.qcard.qcard-input-open {
+  border-left-color: var(--accent-soft);
+  box-shadow: 0 2px 24px rgba(0,0,0,.35);
+}
+
 .progress-row {
   display: flex;
   align-items: center;

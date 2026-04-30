@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es-CO">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#0f1e35" />
 
@@ -165,13 +165,14 @@
 <!-- ════════════════════════════════════════════
      GOOGLE ADS GTAG (configurar tu ID real)
      ════════════════════════════════════════════ -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=AW-XXXXXXXXX"></script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18090223812"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'AW-XXXXXXXXX'); // ⚠️ Reemplaza con tu Google Ads Conversion ID
-  gtag('config', 'G-56F8P4D7QM'); // GA4 (mantenemos el de tu Vue)
+
+  gtag('config', 'AW-18090223812');
 </script>
 
 <!-- ════════════════════════════════════════════
@@ -186,10 +187,10 @@ n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', 'YOUR_PIXEL_ID'); // ⚠️ Reemplaza con tu Pixel ID
+fbq('init', '1651238849453662'); // ⚠️ Reemplaza con tu Pixel ID
 fbq('track', 'PageView');
 </script>
-<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=YOUR_PIXEL_ID&ev=PageView&noscript=1"/></noscript>
+<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1651238849453662&ev=PageView&noscript=1"/></noscript>
 </head>
 
 <body>
@@ -558,12 +559,12 @@ fbq('track', 'PageView');
       <div class="qcard qcard-locked" data-card="ingresos">
         <span class="qcard-n">04</span>
         <div class="qcard-body">
-          <p class="qcard-text">¿Tus ingresos mensuales superan los <strong>$6.000.000</strong>?</p>
+          <p class="qcard-text">¿Tus ingresos mensuales superan los <strong>$8.000.000</strong>?</p>
           <div class="qcard-opts">
             <button type="button" class="qbtn" data-q="ingresos" data-v="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg> Sí
             </button>
-            <button type="button" class="qbtn" data-q="ingresos" data-v="false">
+            <button type="button" class="qbtn" id="btn-ingresos-no">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> No
             </button>
           </div>
@@ -571,6 +572,30 @@ fbq('track', 'PageView');
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
             Responde las preguntas anteriores
           </p>
+
+          <!-- Sub-input: monto de ingresos cuando dice No -->
+          <div class="income-input-wrap" id="income-wrap" style="display:none">
+            <label class="income-label">¿Cuánto ganas mensualmente?</label>
+            <div class="income-field">
+              <span class="income-prefix">$</span>
+              <input
+                id="input-ingresos"
+                type="text"
+                inputmode="numeric"
+                placeholder="0"
+                class="income-input"
+                autocomplete="off"
+              />
+            </div>
+            <p class="income-warn" id="income-warn" style="display:none">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              El mínimo requerido es $4.000.000
+            </p>
+            <button type="button" class="qbtn qbtn-continue" id="btn-ingresos-continuar" style="display:none">
+              Continuar
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+          </div>
         </div>
         <div class="qcard-badge"></div>
       </div>
